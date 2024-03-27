@@ -64,15 +64,20 @@ namespace SubtitleGenerator
 
         private async void GenerateSubtitles_ButtonClick(object sender, RoutedEventArgs e)
         {
-            var audioData = ExtractAudioFromVideo(VideoFilePath, (int)BatchSeconds.Value);
+            var audioData = Utils.ExtractAudioFromVideo(VideoFilePath, (int)BatchSeconds.Value);
+            var audioBytes = Utils.LoadAudioBytes(VideoFilePath);
             var srtBatches = new List<string>();
+
+            var voiceAreas = DetectVoice(audioBytes);
+
             //foreach (var batch in audioData)
             foreach (var batch in audioData.Select((value, i) => (value, i)))
             {
                 srtBatches.Add(await TranscribeAsync(batch.value, Combo2.SelectedValue.ToString(), Switch1.IsOn ? TaskType.Translate : TaskType.Transcribe, batch.i, (int)BatchSeconds.Value));
             }
             var srtFilePath = Utils.SaveSrtContentToTempFile(srtBatches, Path.GetFileNameWithoutExtension(VideoFilePath));
-            OpenVideo(addSubtitles(VideoFilePath, srtFilePath));
+            //OpenVideo(addSubtitles(VideoFilePath, srtFilePath));
+            OpenVideo(VideoFilePath, srtFilePath);
         }
 
         private async void GetAudioFromVideoButtonClick(object sender, RoutedEventArgs e)
@@ -110,66 +115,6 @@ namespace SubtitleGenerator
 
         }
 
-        private List<float[]> ExtractAudioFromVideo(string inPath, int batchSizeInSeconds)
-        {
-            try
-            {
-                var extension = System.IO.Path.GetExtension(inPath).Substring(1);
-                var output = new MemoryStream();
-
-                var convertSettings = new ConvertSettings
-                {
-                    AudioCodec = "pcm_s16le",
-                    AudioSampleRate = 16000,
-                    CustomOutputArgs = "-vn -ac 1",
-                    // TODO: add batching
-                    //MaxDuration = 30
-                };
-
-                var ffMpegConverter = new FFMpegConverter();
-                ffMpegConverter.ConvertMedia(
-                    inputFile: inPath,
-                    inputFormat: extension,
-                    outputStream: output,
-                    outputFormat: "s16le",
-
-                    convertSettings);
-
-                var buffer = output.ToArray();
-                // Calculate number of samples in 30 seconds; Sample rate * 30 (assuming 16K sample rate)
-                int samplesPerSeconds = 16000 * batchSizeInSeconds;
-                // Calculate bytes per sample, assuming 16-bit depth (2 bytes per sample)
-                int bytesPerSample = 2;
-
-                // Calculate total samples in the buffer
-                int totalSamples = buffer.Length / bytesPerSample;
-
-                List<float[]> batches = new List<float[]>();
-                for (int startSample = 0; startSample < totalSamples; startSample += samplesPerSeconds)
-                {
-                    int endSample = Math.Min(startSample + samplesPerSeconds, totalSamples);
-                    int numSamples = endSample - startSample;
-                    float[] batch = new float[numSamples];
-
-                    for (int i = 0; i < numSamples; i++)
-                    {
-                        int bufferIndex = (startSample + i) * bytesPerSample;
-                        short sample = (short)(buffer[bufferIndex + 1] << 8 | buffer[bufferIndex]);
-                        batch[i] = sample / 32768.0f;
-                    }
-
-                    batches.Add(batch);
-                }
-
-                return batches;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Error during the audio extraction: " + ex.Message);
-                return new List<float[]>(0);
-            }
-        }
-
         public async Task<byte[]> ConvertStorageFileToByteArray(StorageFile storageFile)
         {
             if (storageFile == null)
@@ -189,11 +134,73 @@ namespace SubtitleGenerator
             }
         }
 
+        public class DetectionResult
+        {
+            public string Type { get; set; }
+            public double Seconds { get; set; }
+        }
+
+        private List<DetectionResult> DetectVoice(byte[] audioBytes)
+        {
+            var assemblyLocation = Assembly.GetExecutingAssembly().Location;
+            var assemblyPath = Path.GetDirectoryName(assemblyLocation);
+            string vadModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "..\\..\\..\\..\\..\\Assets\\silero_vad.onnx"));
+
+            var MODEL_PATH = vadModelPath;
+            var SAMPLE_RATE = 16000;
+            var START_THRESHOLD = 0.5f;
+            var END_THRESHOLD = 0.45f;
+            var MIN_SILENCE_DURATION_MS = 600;
+            var SPEECH_PAD_MS = 500;
+            var WINDOW_SIZE_SAMPLES = 2048;
+
+            SlieroVadDetector vadDetector;
+            vadDetector = new SlieroVadDetector(MODEL_PATH, START_THRESHOLD, END_THRESHOLD, SAMPLE_RATE, MIN_SILENCE_DURATION_MS, SPEECH_PAD_MS);
+
+            int bytesPerSample = 1;
+            int bytesPerWindow = WINDOW_SIZE_SAMPLES * bytesPerSample;
+
+            var result = new List<DetectionResult>();
+
+            for (int offset = 0; offset + bytesPerWindow <= audioBytes.Length; offset += bytesPerWindow)
+            {
+                byte[] data = new byte[bytesPerWindow];
+                Array.Copy(audioBytes, offset, data, 0, bytesPerWindow);
+
+                // Simulating the process as if data was being read in chunks
+                try
+                {
+                    var detectResult = vadDetector.Apply(data, true);
+                    // iterate over detectResult and apply the data to result:
+                    foreach (var (key, value) in detectResult)
+                    {
+                        result.Add(new DetectionResult { Type = key, Seconds = value });
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.Error.WriteLine($"Error applying VAD detector: {e.Message}");
+                    // Depending on the need, you might want to break out of the loop or just report the error
+                }
+            }
+
+            return result;
+        }
+
         private async Task<string> TranscribeAsync(float[] pcmAudioData, string inputLanguage, TaskType taskType, int batch, int batchSeconds)
         {
             var assemblyLocation = Assembly.GetExecutingAssembly().Location;
             var assemblyPath = Path.GetDirectoryName(assemblyLocation);
-            string modelPath = Path.GetFullPath(Path.Combine(assemblyPath, "..\\..\\..\\..\\..\\Assets\\model.onnx"));
+            string whisperModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "..\\..\\..\\..\\..\\Assets\\model_small.onnx"));
+            
+            //string modelPath = "C:\\Users\\gkhmyznikov\\Develop\\temp\\model_srb_only.onnx";
+            //string modelPath = "C:\\Users\\gkhmyznikov\\Develop\\temp\\model_17.onnx";
+
+
+            //var modelName = "model.onnx";
+            //Uri fileUri = new Uri($"ms-appdata:///Assets/{modelName}");
+            //StorageFile file = await StorageFile.GetFileFromApplicationUriAsync(fileUri);
+            //byte[] modelData = await ConvertStorageFileToByteArray(file);
 
             var audioTensor = new DenseTensor<float>(pcmAudioData, [1, pcmAudioData.Length]);
             var timestampsEnableTensor = new DenseTensor<int>(new[] { 1 }, [1]);
@@ -211,7 +218,7 @@ namespace SubtitleGenerator
             //options.LogSeverityLevel = 0;
             options.AppendExecutionProvider_CPU();
 
-            using var session = new InferenceSession(modelPath, options);
+            using var session = new InferenceSession(whisperModelPath, options);
 
             var inputs = new List<NamedOnnxValue> {
                 NamedOnnxValue.CreateFromTensor("audio_pcm", audioTensor),
@@ -271,12 +278,21 @@ namespace SubtitleGenerator
             return outputFilePath;
         }
 
-        private void OpenVideo(string videoFilePath)
+        private void OpenVideo(string videoFilePath, string srtFilePath)
         {
+            //ProcessStartInfo startInfo = new ProcessStartInfo
+            //{
+            //    FileName = videoFilePath,
+            //    UseShellExecute = true,
+            //    Arguments = srtFilePath
+            //};
+
+            string vlcPath = @"C:\Program Files\VideoLAN\VLC\vlc.exe";
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
-                FileName = videoFilePath,
-                UseShellExecute = true
+                FileName = vlcPath,
+                UseShellExecute = false,
+                Arguments = $"\"{videoFilePath}\" --sub-file=\"{srtFilePath}\" --no-osd"
             };
 
             Process.Start(startInfo);

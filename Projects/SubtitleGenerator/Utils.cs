@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using NReco.VideoConverter;
 
 namespace SubtitleGenerator
 {
@@ -210,6 +211,88 @@ namespace SubtitleGenerator
                 Console.WriteLine($"Error saving SRT file: {ex.Message}");
             }
             return srtFilePath;
+        }
+
+        public static byte[] LoadAudioBytes(string file)
+        {
+            var ffmpeg = new FFMpegConverter();
+            var output = new MemoryStream();
+
+            var extension = Path.GetExtension(file).Substring(1);
+
+            // Convert to PCM
+            ffmpeg.ConvertMedia(inputFile: file,
+                                inputFormat: extension,
+                                outputStream: output,
+                                //  DE s16le PCM signed 16-bit little-endian
+                                outputFormat: "s16le",
+                                new ConvertSettings()
+                                {
+                                    AudioCodec = "pcm_s16le",
+                                    AudioSampleRate = 16000,
+                                    // Convert to mono
+                                    CustomOutputArgs = "-ac 1"
+                                });
+
+            return output.ToArray();
+        }
+
+        public static List<float[]> ExtractAudioFromVideo(string inPath, int batchSizeInSeconds)
+        {
+            try
+            {
+                var extension = System.IO.Path.GetExtension(inPath).Substring(1);
+                var output = new MemoryStream();
+
+                var convertSettings = new ConvertSettings
+                {
+                    AudioCodec = "pcm_s16le",
+                    AudioSampleRate = 16000,
+                    CustomOutputArgs = "-vn -ac 1",
+                };
+
+                var ffMpegConverter = new FFMpegConverter();
+                ffMpegConverter.ConvertMedia(
+                    inputFile: inPath,
+                    inputFormat: extension,
+                    outputStream: output,
+                    outputFormat: "s16le",
+
+                    convertSettings);
+
+                var buffer = output.ToArray();
+                // Calculate number of samples in 30 seconds; Sample rate * 30 (assuming 16K sample rate)
+                int samplesPerSeconds = 16000 * batchSizeInSeconds;
+                // Calculate bytes per sample, assuming 16-bit depth (2 bytes per sample)
+                int bytesPerSample = 2;
+
+                // Calculate total samples in the buffer
+                int totalSamples = buffer.Length / bytesPerSample;
+
+                List<float[]> batches = new List<float[]>();
+                for (int startSample = 0; startSample < totalSamples; startSample += samplesPerSeconds)
+                {
+                    int endSample = Math.Min(startSample + samplesPerSeconds, totalSamples);
+                    int numSamples = endSample - startSample;
+                    float[] batch = new float[numSamples];
+
+                    for (int i = 0; i < numSamples; i++)
+                    {
+                        int bufferIndex = (startSample + i) * bytesPerSample;
+                        short sample = (short)(buffer[bufferIndex + 1] << 8 | buffer[bufferIndex]);
+                        batch[i] = sample / 32768.0f;
+                    }
+
+                    batches.Add(batch);
+                }
+
+                return batches;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error during the audio extraction: " + ex.Message);
+                return new List<float[]>(0);
+            }
         }
     }
 }
