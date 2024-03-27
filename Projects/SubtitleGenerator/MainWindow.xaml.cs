@@ -80,6 +80,37 @@ namespace SubtitleGenerator
             OpenVideo(VideoFilePath, srtFilePath);
         }
 
+        private List<Chunk> GetTimeStamps(List<DetectionResult> voiceAreas, double totalSeconds)
+        {
+            List<Chunk> chunks = new();
+            int currChunk = 1;
+            double startTime = 0;
+            for(int i=1;i<voiceAreas.Count - 1;i+=2)
+            {
+                if (voiceAreas[i].Seconds > startTime + 30 && chunks.Count < currChunk)
+                {
+                    chunks.Add(new Chunk(startTime, currChunk * 30));
+                    currChunk++;
+                    startTime = currChunk * 30;
+                }
+                //TODO: This is a very basic check, we can check for a threshold of values instead, Amrutha will work on that
+                if (voiceAreas[i].Seconds <= startTime + 30 && (i == voiceAreas.Count - 1 || voiceAreas[i + 1].Seconds > startTime + 30)) {
+                    chunks.Add(new Chunk(startTime, voiceAreas[i].Seconds));
+                    currChunk++;
+                    startTime = voiceAreas[i].Seconds;
+                }
+                
+            }
+
+            double j;
+            //Sometimes the last chunk is really large
+            for(j=startTime; j<totalSeconds;j+=30)
+            {
+                chunks.Add(new Chunk(j, Math.Min(j + 30, totalSeconds)));
+            }
+            return chunks;
+        }
+
         private async void GetAudioFromVideoButtonClick(object sender, RoutedEventArgs e)
         {
             // Clear previous returned file name, if it exists, between iterations of this scenario
@@ -140,7 +171,20 @@ namespace SubtitleGenerator
             public double Seconds { get; set; }
         }
 
-        private List<DetectionResult> DetectVoice(byte[] audioBytes)
+        public class Chunk
+        {
+            public double start { get; set; }
+            public double end { get; set; }
+
+            public Chunk(double start, double end)
+            {
+                this.start = start;
+                this.end = end;
+            }
+
+        }
+
+        private List<Chunk> DetectVoice(byte[] audioBytes)
         {
             var assemblyLocation = Assembly.GetExecutingAssembly().Location;
             var assemblyPath = Path.GetDirectoryName(assemblyLocation);
@@ -157,9 +201,10 @@ namespace SubtitleGenerator
             SlieroVadDetector vadDetector;
             vadDetector = new SlieroVadDetector(MODEL_PATH, START_THRESHOLD, END_THRESHOLD, SAMPLE_RATE, MIN_SILENCE_DURATION_MS, SPEECH_PAD_MS);
 
-            int bytesPerSample = 1;
+            int bytesPerSample = 1; //TODO: This should be 2 right?
             int bytesPerWindow = WINDOW_SIZE_SAMPLES * bytesPerSample;
 
+            float totalSeconds = audioBytes.Length / (SAMPLE_RATE * 2);
             var result = new List<DetectionResult>();
 
             for (int offset = 0; offset + bytesPerWindow <= audioBytes.Length; offset += bytesPerWindow)
@@ -183,8 +228,8 @@ namespace SubtitleGenerator
                     // Depending on the need, you might want to break out of the loop or just report the error
                 }
             }
-
-            return result;
+            var stamps = GetTimeStamps(result, totalSeconds);
+            return stamps;
         }
 
         private async Task<string> TranscribeAsync(float[] pcmAudioData, string inputLanguage, TaskType taskType, int batch, int batchSeconds)
