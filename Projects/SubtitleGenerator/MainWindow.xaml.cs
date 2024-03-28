@@ -64,17 +64,32 @@ namespace SubtitleGenerator
 
         private async void GenerateSubtitles_ButtonClick(object sender, RoutedEventArgs e)
         {
-            var audioData = Utils.ExtractAudioFromVideo(VideoFilePath, (int)BatchSeconds.Value);
             var audioBytes = Utils.LoadAudioBytes(VideoFilePath);
             var srtBatches = new List<string>();
 
-            var voiceAreas = DetectVoice(audioBytes);
+            var dynamicChunks = DetectVoice(audioBytes);
 
-            //foreach (var batch in audioData)
-            foreach (var batch in audioData.Select((value, i) => (value, i)))
+            foreach (var chunk in dynamicChunks.Select((value, i) => (value, i)))
             {
-                srtBatches.Add(await TranscribeAsync(batch.value, Combo2.SelectedValue.ToString(), Switch1.IsOn ? TaskType.Translate : TaskType.Transcribe, batch.i, (int)BatchSeconds.Value));
+                // Assuming you have or can create a method for extracting audio segments by start/end times.
+                // This will involve modifying your Utils.ExtractAudioFromVideo method or creating a new one that can handle this.
+                // The new method might return a byte array of the audio for the specified chunk.
+                // The method might look like: Utils.ExtractAudioSegment(audioBytes, chunk.start, chunk.end);
+                var audioSegment = Utils.ExtractAudioSegment(VideoFilePath, chunk.value.start, chunk.value.end);
+
+                // Assuming TranscribeAsync can take the audio segment directly along with other parameters.
+                // The provided chunk might also be used to adjust how you number/name the subtitle batches.
+                // Adjusting the call to TranscribeAsync to use the chunk's start time or a combination of start and end times for naming uniqueness.
+                var transcription = await TranscribeAsync(audioSegment, Combo2.SelectedValue.ToString(), Switch1.IsOn ? TaskType.Translate : TaskType.Transcribe, (int)chunk.value.start);
+
+                srtBatches.Add(transcription);
             }
+
+            //var audioData = Utils.ExtractAudioFromVideo(VideoFilePath, (int)BatchSeconds.Value);
+            //foreach (var batch in audioData.Select((value, i) => (value, i)))
+            //{
+            //    srtBatches.Add(await TranscribeAsync(batch.value, Combo2.SelectedValue.ToString(), Switch1.IsOn ? TaskType.Translate : TaskType.Transcribe, batch.i, (int)BatchSeconds.Value));
+            //}
             var srtFilePath = Utils.SaveSrtContentToTempFile(srtBatches, Path.GetFileNameWithoutExtension(VideoFilePath));
             //OpenVideo(addSubtitles(VideoFilePath, srtFilePath));
             OpenVideo(VideoFilePath, srtFilePath);
@@ -82,31 +97,31 @@ namespace SubtitleGenerator
 
         private List<Chunk> GetTimeStamps(List<DetectionResult> voiceAreas, double totalSeconds)
         {
+            const int maxLength = 30;
             List<Chunk> chunks = new();
             int currChunk = 1;
             double startTime = 0;
             for(int i=1;i<voiceAreas.Count - 1;i+=2)
             {
-                if (voiceAreas[i].Seconds > startTime + 30 && chunks.Count < currChunk)
+                if (voiceAreas[i].Seconds > startTime + maxLength && chunks.Count < currChunk)
                 {
-                    chunks.Add(new Chunk(startTime, currChunk * 30));
+                    chunks.Add(new Chunk(startTime, currChunk * maxLength));
                     currChunk++;
-                    startTime = currChunk * 30;
+                    startTime = currChunk * maxLength;
                 }
                 //TODO: This is a very basic check, we can check for a threshold of values instead, Amrutha will work on that
-                if (voiceAreas[i].Seconds <= startTime + 30 && (i == voiceAreas.Count - 1 || voiceAreas[i + 1].Seconds > startTime + 30)) {
+                if (voiceAreas[i].Seconds <= startTime + maxLength && (i == voiceAreas.Count - 1 || voiceAreas[i + 1].Seconds > startTime + maxLength)) {
                     chunks.Add(new Chunk(startTime, voiceAreas[i].Seconds));
                     currChunk++;
                     startTime = voiceAreas[i].Seconds;
-                }
-                
+                }   
             }
 
             double j;
             //Sometimes the last chunk is really large
-            for(j=startTime; j<totalSeconds;j+=30)
+            for(j=startTime; j<totalSeconds;j+= maxLength)
             {
-                chunks.Add(new Chunk(j, Math.Min(j + 30, totalSeconds)));
+                chunks.Add(new Chunk(j, Math.Min(j + maxLength, totalSeconds)));
             }
             return chunks;
         }
@@ -201,7 +216,7 @@ namespace SubtitleGenerator
             SlieroVadDetector vadDetector;
             vadDetector = new SlieroVadDetector(MODEL_PATH, START_THRESHOLD, END_THRESHOLD, SAMPLE_RATE, MIN_SILENCE_DURATION_MS, SPEECH_PAD_MS);
 
-            int bytesPerSample = 1; //TODO: This should be 2 right?
+            int bytesPerSample = 2; //TODO: This should be 2 right?
             int bytesPerWindow = WINDOW_SIZE_SAMPLES * bytesPerSample;
 
             float totalSeconds = audioBytes.Length / (SAMPLE_RATE * 2);
@@ -232,11 +247,11 @@ namespace SubtitleGenerator
             return stamps;
         }
 
-        private async Task<string> TranscribeAsync(float[] pcmAudioData, string inputLanguage, TaskType taskType, int batch, int batchSeconds)
+        private async Task<string> TranscribeAsync(float[] pcmAudioData, string inputLanguage, TaskType taskType, int batchSeconds)
         {
             var assemblyLocation = Assembly.GetExecutingAssembly().Location;
             var assemblyPath = Path.GetDirectoryName(assemblyLocation);
-            string whisperModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "..\\..\\..\\..\\..\\Assets\\model_small.onnx"));
+            string whisperModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "..\\..\\..\\..\\..\\Assets\\model_medium.onnx"));
             
             //string modelPath = "C:\\Users\\gkhmyznikov\\Develop\\temp\\model_srb_only.onnx";
             //string modelPath = "C:\\Users\\gkhmyznikov\\Develop\\temp\\model_17.onnx";
@@ -281,7 +296,7 @@ namespace SubtitleGenerator
             using var results = session.Run(inputs);
             var output = ProcessResults(results);
             //var srtPath = Utils.ConvertToSrt(output, Path.GetFileNameWithoutExtension(videoFileName), batch);
-            var srtText = Utils.ConvertToSrt(output, batch, batchSeconds);
+            var srtText = Utils.ConvertToSrt(output, batchSeconds);
 
             //PickAFileOutputTextBlock.Text = "Generated SRT File at: " + srtPath;
 

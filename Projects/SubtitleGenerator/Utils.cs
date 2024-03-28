@@ -150,7 +150,7 @@ namespace SubtitleGenerator
             return langId;
         }
 
-        public static string ConvertToSrt(string subtitleString, int batchIndex, int batchSizeInSeconds)
+        public static string ConvertToSrt(string subtitleString, int offsetInSeconds)
         {
             Regex pattern = new Regex(@"<\|([\d.]+)\|>([^<]+)<\|([\d.]+)\|>");
             MatchCollection matches = pattern.Matches(subtitleString);
@@ -158,7 +158,7 @@ namespace SubtitleGenerator
             string srtContent = "";
 
             // Calculate the time offset based on the batch number. Each batch represents an additional 30 seconds.
-            double batchOffset = batchIndex * batchSizeInSeconds; // 30 seconds per batch
+            double batchOffset = offsetInSeconds; // batchIndex * batchSizeInSeconds; // 30 seconds per batch
 
             for (int i = 0; i < matches.Count; i++)
             {
@@ -292,6 +292,53 @@ namespace SubtitleGenerator
             {
                 Console.WriteLine("Error during the audio extraction: " + ex.Message);
                 return new List<float[]>(0);
+            }
+        }
+
+        public static float[] ExtractAudioSegment(string inPath, double startTimeInSeconds, double segmentDurationInSeconds)
+        {
+            try
+            {
+                var extension = System.IO.Path.GetExtension(inPath).Substring(1);
+                var output = new MemoryStream();
+
+                var convertSettings = new ConvertSettings
+                {
+                    Seek = (float?)startTimeInSeconds,
+                    MaxDuration = (float?)segmentDurationInSeconds,
+                    AudioCodec = "pcm_s16le",
+                    AudioSampleRate = 16000,
+                    CustomOutputArgs = "-vn -ac 1",
+                };
+
+                var ffMpegConverter = new FFMpegConverter();
+                ffMpegConverter.ConvertMedia(
+                    inputFile: inPath,
+                    inputFormat: extension,
+                    outputStream: output,
+                    outputFormat: "s16le",
+                    convertSettings);
+
+                var buffer = output.ToArray();
+                int bytesPerSample = 2; // Assuming 16-bit depth (2 bytes per sample)
+
+                // Calculate total samples in the buffer
+                int totalSamples = buffer.Length / bytesPerSample;
+                float[] samples = new float[totalSamples];
+
+                for (int i = 0; i < totalSamples; i++)
+                {
+                    int bufferIndex = i * bytesPerSample;
+                    short sample = (short)(buffer[bufferIndex + 1] << 8 | buffer[bufferIndex]);
+                    samples[i] = sample / 32768.0f; // Normalize to range [-1,1] for floating point samples
+                }
+
+                return samples;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error during the audio extraction: " + ex.Message);
+                return new float[0]; // Return an empty array in case of exception
             }
         }
     }
