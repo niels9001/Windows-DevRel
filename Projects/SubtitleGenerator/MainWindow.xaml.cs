@@ -69,13 +69,27 @@ namespace SubtitleGenerator
 
             var dynamicChunks = DetectVoice(audioBytes);
 
+            //// Transform the operations into a collection of tasks.
+            //var transcriptionTasks = dynamicChunks.Select(async (chunk, i) =>
+            //{
+            //    var audioSegment = Utils.ExtractAudioSegment(VideoFilePath, chunk.start, chunk.end - chunk.start);
+            //    return await TranscribeAsync(audioSegment, Combo2.SelectedValue.ToString(), Switch1.IsOn ? TaskType.Translate : TaskType.Transcribe, (int)chunk.start);
+            //}).ToList();
+
+            //// Wait for all tasks to complete while preserving the order.
+            //var transcriptions = await Task.WhenAll(transcriptionTasks);
+
+            //// At this point, 'transcriptions' contains the results in the order of 'dynamicChunks'.
+            //// Add the transcription results to your srtBatches list.
+            //var srtBatches = transcriptions.ToList();
+
             foreach (var chunk in dynamicChunks.Select((value, i) => (value, i)))
             {
                 // Assuming you have or can create a method for extracting audio segments by start/end times.
                 // This will involve modifying your Utils.ExtractAudioFromVideo method or creating a new one that can handle this.
                 // The new method might return a byte array of the audio for the specified chunk.
                 // The method might look like: Utils.ExtractAudioSegment(audioBytes, chunk.start, chunk.end);
-                var audioSegment = Utils.ExtractAudioSegment(VideoFilePath, chunk.value.start, chunk.value.end);
+                var audioSegment = Utils.ExtractAudioSegment(VideoFilePath, chunk.value.start, chunk.value.end - chunk.value.start);
 
                 // Assuming TranscribeAsync can take the audio segment directly along with other parameters.
                 // The provided chunk might also be used to adjust how you number/name the subtitle batches.
@@ -85,11 +99,6 @@ namespace SubtitleGenerator
                 srtBatches.Add(transcription);
             }
 
-            //var audioData = Utils.ExtractAudioFromVideo(VideoFilePath, (int)BatchSeconds.Value);
-            //foreach (var batch in audioData.Select((value, i) => (value, i)))
-            //{
-            //    srtBatches.Add(await TranscribeAsync(batch.value, Combo2.SelectedValue.ToString(), Switch1.IsOn ? TaskType.Translate : TaskType.Transcribe, batch.i, (int)BatchSeconds.Value));
-            //}
             var srtFilePath = Utils.SaveSrtContentToTempFile(srtBatches, Path.GetFileNameWithoutExtension(VideoFilePath));
             //OpenVideo(addSubtitles(VideoFilePath, srtFilePath));
             OpenVideo(VideoFilePath, srtFilePath);
@@ -97,33 +106,96 @@ namespace SubtitleGenerator
 
         private List<Chunk> GetTimeStamps(List<DetectionResult> voiceAreas, double totalSeconds)
         {
-            const int maxLength = 30;
-            List<Chunk> chunks = new();
-            int currChunk = 1;
-            double startTime = 0;
-            for(int i=1;i<voiceAreas.Count - 1;i+=2)
+            //const int maxLength = 30;
+            //List<Chunk> chunks = new();
+            //int currChunk = 1;
+            //double startTime = 0;
+            //for(int i=1;i<voiceAreas.Count - 1;i+=2)
+            //{
+            //    if (voiceAreas[i].Seconds > startTime + maxLength && chunks.Count < currChunk)
+            //    {
+            //        chunks.Add(new Chunk(startTime, currChunk * maxLength));
+            //        currChunk++;
+            //        startTime = currChunk * maxLength;
+            //    }
+            //    //TODO: This is a very basic check, we can check for a threshold of values instead, Amrutha will work on that
+            //    if (voiceAreas[i].Seconds <= startTime + maxLength && (i == voiceAreas.Count - 1 || voiceAreas[i + 1].Seconds > startTime + maxLength)) {
+            //        chunks.Add(new Chunk(startTime, voiceAreas[i].Seconds));
+            //        currChunk++;
+            //        startTime = voiceAreas[i].Seconds;
+            //    }   
+            //}
+
+            //double j;
+            ////Sometimes the last chunk is really large
+            //for(j=startTime; j<totalSeconds;j+= maxLength)
+            //{
+            //    chunks.Add(new Chunk(j, Math.Min(j + maxLength, totalSeconds)));
+            //}
+            //return chunks;
+            const double maxLength = 30;
+            const double minChunkLength = 5.0; // Minimum acceptable chunk length before considering a merge.
+            List<Chunk> initialChunks = new List<Chunk>();
+
+            if (maxLength >= totalSeconds)
             {
-                if (voiceAreas[i].Seconds > startTime + maxLength && chunks.Count < currChunk)
-                {
-                    chunks.Add(new Chunk(startTime, currChunk * maxLength));
-                    currChunk++;
-                    startTime = currChunk * maxLength;
-                }
-                //TODO: This is a very basic check, we can check for a threshold of values instead, Amrutha will work on that
-                if (voiceAreas[i].Seconds <= startTime + maxLength && (i == voiceAreas.Count - 1 || voiceAreas[i + 1].Seconds > startTime + maxLength)) {
-                    chunks.Add(new Chunk(startTime, voiceAreas[i].Seconds));
-                    currChunk++;
-                    startTime = voiceAreas[i].Seconds;
-                }   
+                initialChunks.Add(new Chunk(0.0, totalSeconds));
+                return initialChunks;
             }
 
-            double j;
-            //Sometimes the last chunk is really large
-            for(j=startTime; j<totalSeconds;j+= maxLength)
+            double nextChunkStart = 0.0;
+            voiceAreas = voiceAreas.OrderBy(va => va.Seconds).ToList();
+
+            while (nextChunkStart < totalSeconds)
             {
-                chunks.Add(new Chunk(j, Math.Min(j + maxLength, totalSeconds)));
+                double idealChunkEnd = nextChunkStart + maxLength;
+                double chunkEnd = idealChunkEnd > totalSeconds ? totalSeconds : idealChunkEnd;
+
+                DetectionResult closestVoiceAreaEnd = voiceAreas
+                    .Where(va => va.Seconds > nextChunkStart && va.Seconds <= chunkEnd)
+                    .OrderBy(va => va.Seconds)
+                    .LastOrDefault();
+
+                chunkEnd = closestVoiceAreaEnd?.Seconds ?? chunkEnd;
+                initialChunks.Add(new Chunk(nextChunkStart, chunkEnd));
+                nextChunkStart = chunkEnd;
             }
-            return chunks;
+
+            // Merge small chunks with adjacent ones if they don't exceed maxLength after merge.
+            List<Chunk> mergedChunks = new List<Chunk>();
+            for (int i = 0; i < initialChunks.Count; i++)
+            {
+                if (i > 0 && initialChunks[i].end - initialChunks[i].start < minChunkLength)
+                {
+                    // Attempt to merge with previous chunk if total length is within maxLength
+                    double combinedLength = initialChunks[i].end - mergedChunks.Last().start;
+                    if (combinedLength <= maxLength)
+                    {
+                        Chunk lastChunk = mergedChunks.Last();
+                        mergedChunks[mergedChunks.Count - 1] = new Chunk(lastChunk.start, initialChunks[i].end);
+                        continue;
+                    }
+                }
+
+                // If not merged with previous, check if it can be merged with the next one
+                if (i < initialChunks.Count - 1)
+                {
+                    double nextChunkLength = initialChunks[i + 1].end - initialChunks[i].start;
+                    if (nextChunkLength <= maxLength && (initialChunks[i + 1].end - initialChunks[i + 1].start) < minChunkLength)
+                    {
+                        
+                        if (i + 2 >= initialChunks.Count) continue;
+
+                        // Skip the next chunk as it's merged with the current one
+                        i++;
+                        initialChunks[i] = new Chunk(initialChunks[i].start, initialChunks[i + 1].end);
+                    }
+                }
+
+                mergedChunks.Add(initialChunks[i]);
+            }
+
+            return mergedChunks;
         }
 
         private async void GetAudioFromVideoButtonClick(object sender, RoutedEventArgs e)
@@ -207,16 +279,16 @@ namespace SubtitleGenerator
 
             var MODEL_PATH = vadModelPath;
             var SAMPLE_RATE = 16000;
-            var START_THRESHOLD = 0.5f;
+            var START_THRESHOLD = 0.25f;
             var END_THRESHOLD = 0.45f;
-            var MIN_SILENCE_DURATION_MS = 600;
-            var SPEECH_PAD_MS = 500;
+            var MIN_SILENCE_DURATION_MS = 500;
+            var SPEECH_PAD_MS = 100;
             var WINDOW_SIZE_SAMPLES = 2048;
 
             SlieroVadDetector vadDetector;
             vadDetector = new SlieroVadDetector(MODEL_PATH, START_THRESHOLD, END_THRESHOLD, SAMPLE_RATE, MIN_SILENCE_DURATION_MS, SPEECH_PAD_MS);
 
-            int bytesPerSample = 2; //TODO: This should be 2 right?
+            int bytesPerSample = 1; //TODO: Amr: This should be 2 right? Gleb: Maybe not. I don't see this here: https://github.com/snakers4/silero-vad/blob/5b02d84a4a8a53f211e1c708d4979575c078d67c/examples/java-example/src/main/java/org/example/App.java#L44
             int bytesPerWindow = WINDOW_SIZE_SAMPLES * bytesPerSample;
 
             float totalSeconds = audioBytes.Length / (SAMPLE_RATE * 2);
@@ -251,7 +323,7 @@ namespace SubtitleGenerator
         {
             var assemblyLocation = Assembly.GetExecutingAssembly().Location;
             var assemblyPath = Path.GetDirectoryName(assemblyLocation);
-            string whisperModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "..\\..\\..\\..\\..\\Assets\\model_medium.onnx"));
+            string whisperModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "..\\..\\..\\..\\..\\Assets\\model_small.onnx"));
             
             //string modelPath = "C:\\Users\\gkhmyznikov\\Develop\\temp\\model_srb_only.onnx";
             //string modelPath = "C:\\Users\\gkhmyznikov\\Develop\\temp\\model_17.onnx";
@@ -292,7 +364,8 @@ namespace SubtitleGenerator
                 NamedOnnxValue.CreateFromTensor("logits_processor", timestampsEnableTensor),
                 NamedOnnxValue.CreateFromTensor("decoder_input_ids", langAndModeTensor)
             };
-
+            
+            // for multithread need to try AsyncRun
             using var results = session.Run(inputs);
             var output = ProcessResults(results);
             //var srtPath = Utils.ConvertToSrt(output, Path.GetFileNameWithoutExtension(videoFileName), batch);
