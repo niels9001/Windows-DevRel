@@ -67,7 +67,7 @@ namespace SubtitleGenerator
             var audioBytes = Utils.LoadAudioBytes(VideoFilePath);
             var srtBatches = new List<string>();
 
-            var dynamicChunks = DetectVoice(audioBytes);
+            var dynamicChunks = Chunking.SmartChunking(audioBytes);
 
             //// Transform the operations into a collection of tasks.
             //var transcriptionTasks = dynamicChunks.Select(async (chunk, i) =>
@@ -104,99 +104,7 @@ namespace SubtitleGenerator
             OpenVideo(VideoFilePath, srtFilePath);
         }
 
-        private List<Chunk> GetTimeStamps(List<DetectionResult> voiceAreas, double totalSeconds)
-        {
-            //const int maxLength = 30;
-            //List<Chunk> chunks = new();
-            //int currChunk = 1;
-            //double startTime = 0;
-            //for(int i=1;i<voiceAreas.Count - 1;i+=2)
-            //{
-            //    if (voiceAreas[i].Seconds > startTime + maxLength && chunks.Count < currChunk)
-            //    {
-            //        chunks.Add(new Chunk(startTime, currChunk * maxLength));
-            //        currChunk++;
-            //        startTime = currChunk * maxLength;
-            //    }
-            //    //TODO: This is a very basic check, we can check for a threshold of values instead, Amrutha will work on that
-            //    if (voiceAreas[i].Seconds <= startTime + maxLength && (i == voiceAreas.Count - 1 || voiceAreas[i + 1].Seconds > startTime + maxLength)) {
-            //        chunks.Add(new Chunk(startTime, voiceAreas[i].Seconds));
-            //        currChunk++;
-            //        startTime = voiceAreas[i].Seconds;
-            //    }   
-            //}
-
-            //double j;
-            ////Sometimes the last chunk is really large
-            //for(j=startTime; j<totalSeconds;j+= maxLength)
-            //{
-            //    chunks.Add(new Chunk(j, Math.Min(j + maxLength, totalSeconds)));
-            //}
-            //return chunks;
-            const double maxLength = 30;
-            const double minChunkLength = 5.0; // Minimum acceptable chunk length before considering a merge.
-            List<Chunk> initialChunks = new List<Chunk>();
-
-            if (maxLength >= totalSeconds)
-            {
-                initialChunks.Add(new Chunk(0.0, totalSeconds));
-                return initialChunks;
-            }
-
-            double nextChunkStart = 0.0;
-            voiceAreas = voiceAreas.OrderBy(va => va.Seconds).ToList();
-
-            while (nextChunkStart < totalSeconds)
-            {
-                double idealChunkEnd = nextChunkStart + maxLength;
-                double chunkEnd = idealChunkEnd > totalSeconds ? totalSeconds : idealChunkEnd;
-
-                DetectionResult closestVoiceAreaEnd = voiceAreas
-                    .Where(va => va.Seconds > nextChunkStart && va.Seconds <= chunkEnd)
-                    .OrderBy(va => va.Seconds)
-                    .LastOrDefault();
-
-                chunkEnd = closestVoiceAreaEnd?.Seconds ?? chunkEnd;
-                initialChunks.Add(new Chunk(nextChunkStart, chunkEnd));
-                nextChunkStart = chunkEnd;
-            }
-
-            // Merge small chunks with adjacent ones if they don't exceed maxLength after merge.
-            List<Chunk> mergedChunks = new List<Chunk>();
-            for (int i = 0; i < initialChunks.Count; i++)
-            {
-                if (i > 0 && initialChunks[i].end - initialChunks[i].start < minChunkLength)
-                {
-                    // Attempt to merge with previous chunk if total length is within maxLength
-                    double combinedLength = initialChunks[i].end - mergedChunks.Last().start;
-                    if (combinedLength <= maxLength)
-                    {
-                        Chunk lastChunk = mergedChunks.Last();
-                        mergedChunks[mergedChunks.Count - 1] = new Chunk(lastChunk.start, initialChunks[i].end);
-                        continue;
-                    }
-                }
-
-                // If not merged with previous, check if it can be merged with the next one
-                if (i < initialChunks.Count - 1)
-                {
-                    double nextChunkLength = initialChunks[i + 1].end - initialChunks[i].start;
-                    if (nextChunkLength <= maxLength && (initialChunks[i + 1].end - initialChunks[i + 1].start) < minChunkLength)
-                    {
-                        
-                        if (i + 2 >= initialChunks.Count) continue;
-
-                        // Skip the next chunk as it's merged with the current one
-                        i++;
-                        initialChunks[i] = new Chunk(initialChunks[i].start, initialChunks[i + 1].end);
-                    }
-                }
-
-                mergedChunks.Add(initialChunks[i]);
-            }
-
-            return mergedChunks;
-        }
+        
 
         private async void GetAudioFromVideoButtonClick(object sender, RoutedEventArgs e)
         {
@@ -251,73 +159,7 @@ namespace SubtitleGenerator
                 return buffer.ToArray();
             }
         }
-
-        public class DetectionResult
-        {
-            public string Type { get; set; }
-            public double Seconds { get; set; }
-        }
-
-        public class Chunk
-        {
-            public double start { get; set; }
-            public double end { get; set; }
-
-            public Chunk(double start, double end)
-            {
-                this.start = start;
-                this.end = end;
-            }
-
-        }
-
-        private List<Chunk> DetectVoice(byte[] audioBytes)
-        {
-            var assemblyLocation = Assembly.GetExecutingAssembly().Location;
-            var assemblyPath = Path.GetDirectoryName(assemblyLocation);
-            string vadModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "..\\..\\..\\..\\..\\Assets\\silero_vad.onnx"));
-
-            var MODEL_PATH = vadModelPath;
-            var SAMPLE_RATE = 16000;
-            var START_THRESHOLD = 0.25f;
-            var END_THRESHOLD = 0.45f;
-            var MIN_SILENCE_DURATION_MS = 500;
-            var SPEECH_PAD_MS = 100;
-            var WINDOW_SIZE_SAMPLES = 2048;
-
-            SlieroVadDetector vadDetector;
-            vadDetector = new SlieroVadDetector(MODEL_PATH, START_THRESHOLD, END_THRESHOLD, SAMPLE_RATE, MIN_SILENCE_DURATION_MS, SPEECH_PAD_MS);
-
-            int bytesPerSample = 1; //TODO: Amr: This should be 2 right? Gleb: Maybe not. I don't see this here: https://github.com/snakers4/silero-vad/blob/5b02d84a4a8a53f211e1c708d4979575c078d67c/examples/java-example/src/main/java/org/example/App.java#L44
-            int bytesPerWindow = WINDOW_SIZE_SAMPLES * bytesPerSample;
-
-            float totalSeconds = audioBytes.Length / (SAMPLE_RATE * 2);
-            var result = new List<DetectionResult>();
-
-            for (int offset = 0; offset + bytesPerWindow <= audioBytes.Length; offset += bytesPerWindow)
-            {
-                byte[] data = new byte[bytesPerWindow];
-                Array.Copy(audioBytes, offset, data, 0, bytesPerWindow);
-
-                // Simulating the process as if data was being read in chunks
-                try
-                {
-                    var detectResult = vadDetector.Apply(data, true);
-                    // iterate over detectResult and apply the data to result:
-                    foreach (var (key, value) in detectResult)
-                    {
-                        result.Add(new DetectionResult { Type = key, Seconds = value });
-                    }
-                }
-                catch (Exception e)
-                {
-                    Console.Error.WriteLine($"Error applying VAD detector: {e.Message}");
-                    // Depending on the need, you might want to break out of the loop or just report the error
-                }
-            }
-            var stamps = GetTimeStamps(result, totalSeconds);
-            return stamps;
-        }
+        
 
         private async Task<string> TranscribeAsync(float[] pcmAudioData, string inputLanguage, TaskType taskType, int batchSeconds)
         {
