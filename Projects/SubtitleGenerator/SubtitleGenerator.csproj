@@ -17,11 +17,12 @@
     <Content Remove="Assets\model.onnx" />
     <Content Remove="Assets\model_medium.onnx" />
     <Content Remove="Assets\model_small.onnx" />
+    <Content Remove="Assets\semsearchmodel.onnx" />
     <Content Remove="Assets\silero_vad.onnx" />
+    <Content Remove="Assets\vocab.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Remove="Assets\model.onnx" />
-    <None Remove="Assets\silero_vad.onnx" />
   </ItemGroup>
   
   <ItemGroup>
@@ -37,11 +38,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="BERTTokenizers" Version="1.2.0" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.16.3" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions" Version="0.10.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.5.240311000" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.3233" />
     <PackageReference Include="NReco.VideoConverter" Version="1.2.1" />
+    <PackageReference Include="TorchSharp" Version="0.102.3" />
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
@@ -54,15 +57,23 @@
     <ProjectCapability Include="Msix" />
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="Assets\model_medium.onnx">
+    <None Update="Assets\vocab.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Resource>
-    <Resource Include="Assets\model_small.onnx">
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Assets\model_medium.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Resource>
-    <Resource Include="Assets\silero_vad.onnx">
+    </None>
+    <None Update="Assets\model_small.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Resource>
+    </None>
+    <None Update="Assets\semsearchmodel.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Assets\silero_vad.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <!-- 

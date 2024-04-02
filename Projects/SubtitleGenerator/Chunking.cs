@@ -44,7 +44,7 @@ namespace SubtitleGenerator
         {
             var assemblyLocation = Assembly.GetExecutingAssembly().Location;
             var assemblyPath = Path.GetDirectoryName(assemblyLocation);
-            string vadModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "..\\..\\..\\..\\..\\Assets\\silero_vad.onnx"));
+            string vadModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "Assets//silero_vad.onnx"));
 
             var MODEL_PATH = vadModelPath;
 

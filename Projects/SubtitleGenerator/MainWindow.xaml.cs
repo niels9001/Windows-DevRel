@@ -100,6 +100,10 @@ namespace SubtitleGenerator
             }
 
             var srtFilePath = Utils.SaveSrtContentToTempFile(srtBatches, Path.GetFileNameWithoutExtension(VideoFilePath));
+
+            srtBatches = new() { "So for this project, we used Whisper which is a transformer based model available on how you face that's that performs transcription and translation really well for a lot of different languages."};
+
+            float[] embeddings = SemanticSearch.GetEmbeddings(srtBatches);
             //OpenVideo(addSubtitles(VideoFilePath, srtFilePath));
             OpenVideo(VideoFilePath, srtFilePath);
         }
@@ -165,7 +169,7 @@ namespace SubtitleGenerator
         {
             var assemblyLocation = Assembly.GetExecutingAssembly().Location;
             var assemblyPath = Path.GetDirectoryName(assemblyLocation);
-            string whisperModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "..\\..\\..\\..\\..\\Assets\\model_small.onnx"));
+            string whisperModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "Assets\\model_small.onnx"));
             
             //string modelPath = "C:\\Users\\gkhmyznikov\\Develop\\temp\\model_srb_only.onnx";
             //string modelPath = "C:\\Users\\gkhmyznikov\\Develop\\temp\\model_17.onnx";
