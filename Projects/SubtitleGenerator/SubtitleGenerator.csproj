@@ -15,14 +15,14 @@
   </PropertyGroup>
   <ItemGroup>
     <Content Remove="Assets\model.onnx" />
-    <Content Remove="Assets\model_medium.onnx" />
-    <Content Remove="Assets\model_small.onnx" />
-    <Content Remove="Assets\semsearchmodel.onnx" />
-    <Content Remove="Assets\silero_vad.onnx" />
     <Content Remove="Assets\vocab.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Remove="Assets\model.onnx" />
+    <None Remove="Assets\model_medium.onnx" />
+    <None Remove="Assets\model_small.onnx" />
+    <None Remove="Assets\semsearchmodel.onnx" />
+    <None Remove="Assets\silero_vad.onnx" />
   </ItemGroup>
   
   <ItemGroup>
@@ -39,6 +39,7 @@
 
   <ItemGroup>
     <PackageReference Include="BERTTokenizers" Version="1.2.0" />
+    <PackageReference Include="libtorch-cpu-win-x64" Version="2.2.1.1" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.16.3" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions" Version="0.10.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.5.240311000" />
@@ -57,21 +58,21 @@
     <ProjectCapability Include="Msix" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Assets\vocab.txt">
+    <Content Update="Assets\model_medium.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    </Content>
+    <Content Update="Assets\model_small.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="Assets\semsearchmodel.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="Assets\silero_vad.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
-    <None Update="Assets\model_medium.onnx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Assets\model_small.onnx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Assets\semsearchmodel.onnx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="Assets\silero_vad.onnx">
+    <None Update="Assets\vocab.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
