@@ -8,6 +8,7 @@ using System.Timers;
 using TorchSharp;
 using Microsoft.ML.OnnxRuntime;
 using BERTTokenizers.Base;
+using static TorchSharp.torch.nn;
 
 namespace SubtitleGenerator
 {
@@ -15,8 +16,7 @@ namespace SubtitleGenerator
     {
         private static string modelDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets");
         private static InferenceSession _inferenceSession;
-        private Timer _timer;
-        private Vector[] _embeddings;
+        private static Vector[] _embeddings;
         private string[] _content;
         private static void InitModel()
         {
@@ -30,35 +30,75 @@ namespace SubtitleGenerator
             sessionOptions.AppendExecutionProvider_CPU();
             _inferenceSession = new InferenceSession($@"{modelDir}\semsearchmodel.onnx", sessionOptions);
         }
-        public static float[] GetEmbeddings(List<string> sentences)
+
+        public static int[] GetRankings(string query, params string[] sentences)
+        {
+            var vectors = new Vector[sentences.Length];
+            for (int i = 0; i < sentences.Length; i++)
+            {
+                var content = Regex.Replace(sentences[i], @"[^\u0000-\u007F]", "");
+                content = Regex.Replace(content, @"^\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n", string.Empty, RegexOptions.Multiline);
+                vectors[i] = new Vector { data = GetEmbeddings(content) };
+            }
+            _embeddings = vectors;
+
+            var queryEmbedding = GetEmbeddings(query);
+            var ranking = CalculateRanking(new Vector { data = queryEmbedding }, _embeddings);
+
+            return ranking;
+
+        }
+
+        public static int[] CalculateRanking(Vector searchVector, Vector[] vectors)
+        {
+            float[] scores = new float[vectors.Length];
+            int[] indexranks = new int[vectors.Length];
+
+            for (int i = 0; i < vectors.Length; i++)
+            {
+                var score = CosineSimilarity(vectors[i].data, searchVector.data);
+                scores[i] = score;
+            }
+
+            var indexedFloats = scores.Select((value, index) => new { Value = value, Index = index })
+              .ToArray();
+
+            // Sort the indexed floats by value in descending order
+            Array.Sort(indexedFloats, (a, b) => b.Value.CompareTo(a.Value));
+
+            // Extract the top k indices
+            indexranks = indexedFloats.Select(item => item.Index).ToArray();
+
+            return indexranks;
+        }
+        public static float[] GetEmbeddings(params string[] sentences)
         {
             InitModel();
-            try
-            {
-                //sentences = new() { "something" };
-                var tokenizer = new MyTokenizer($@"{modelDir}\vocab.txt");
-                var tokens = tokenizer.Tokenize(sentences.ToArray());
-                var encoded = tokenizer.Encode(tokens.Count(), sentences.ToArray());
 
-                var input = new ModelInput()
-                {
-                    InputIds = encoded.Select(t => t.InputIds).ToArray(),
-                    AttentionMask = encoded.Select(t => t.AttentionMask).ToArray(),
-                    TokenTypeIds = encoded.Select(t => t.TokenTypeIds).ToArray(),
-                };
+            //sentences = new() { "something" };
+            var tokenizer = new MyTokenizer($@"{modelDir}\vocab.txt");
+            var tokens = tokenizer.Tokenize(sentences.ToArray());
+            var encoded = tokenizer.Encode(tokens.Count(), sentences.ToArray());
+
+            var input = new ModelInput()
+            {
+                InputIds = encoded.Select(t => t.InputIds).ToArray(),
+                AttentionMask = encoded.Select(t => t.AttentionMask).ToArray(),
+                TokenTypeIds = encoded.Select(t => t.TokenTypeIds).ToArray(),
+            };
          
             var runOptions = new RunOptions();
 
 
             // Create input tensors over the input data.
             using var inputIdsOrtValue = OrtValue.CreateTensorValueFromMemory(input.InputIds,
-                  new long[] { sentences.Count, input.InputIds.Length });
+                  new long[] { sentences.Length, input.InputIds.Length });
 
             using var attMaskOrtValue = OrtValue.CreateTensorValueFromMemory(input.AttentionMask,
-                  new long[] { sentences.Count, input.AttentionMask.Length });
+                  new long[] { sentences.Length, input.AttentionMask.Length });
 
             using var typeIdsOrtValue = OrtValue.CreateTensorValueFromMemory(input.TokenTypeIds,
-                  new long[] { sentences.Count, input.TokenTypeIds.Length });
+                  new long[] { sentences.Length, input.TokenTypeIds.Length });
 
             var inputs = new Dictionary<string, OrtValue>
             {
@@ -71,16 +111,31 @@ namespace SubtitleGenerator
             var data = output.ToList()[0].GetTensorDataAsSpan<float>().ToArray();
 
 
-            var sentence_embeddings = MeanPooling(data, input.AttentionMask, sentences.Count, input.AttentionMask.Length, 384);
+            var sentence_embeddings = MeanPooling(data, input.AttentionMask, sentences.Length, input.AttentionMask.Length, 384);
             var denom = sentence_embeddings.norm(1, true, 2).clamp_min(1e-12).expand_as(sentence_embeddings);
             var results = sentence_embeddings / denom;
             return results.data<float>().ToArray();
-            }
-            catch (Exception e)
+
+        }
+
+        public void ProcessQuery(string text)
+        {
+            text = text.Trim();
+            _content = text.Split('.', '\r', '\n');
+            _content = _content.Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+
+            if (_content.Length == 0)
             {
-                Console.WriteLine(e);
+                return;
             }
-            return null;
+
+            var vectors = new Vector[_content.Length];
+            for (int i = 0; i < _content.Length; i++)
+            {
+                var content = Regex.Replace(_content[i], @"[^\u0000-\u007F]", "");
+                vectors[i] = new Vector { data = GetEmbeddings(content) };
+            }
+            _embeddings = vectors;
         }
 
         public static torch.Tensor MeanPooling(float[] embeddings, long[] attentionMask, long batchSize, long sequence, int hiddenSize)
