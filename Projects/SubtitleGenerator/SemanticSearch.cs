@@ -36,9 +36,9 @@ namespace SubtitleGenerator
             var vectors = new Vector[sentences.Length];
             for (int i = 0; i < sentences.Length; i++)
             {
-                var content = Regex.Replace(sentences[i], @"[^\u0000-\u007F]", "");
-                content = Regex.Replace(content, @"^\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n", string.Empty, RegexOptions.Multiline);
-                vectors[i] = new Vector { data = GetEmbeddings(content) };
+                //var content = Regex.Replace(sentences[i], @"[^\u0000-\u007F]", "");
+                //content = Regex.Replace(content, @"^\d+\n\d{2}:\d{2}:\d{2},\d{3} --> \d{2}:\d{2}:\d{2},\d{3}\n", string.Empty, RegexOptions.Multiline);
+                vectors[i] = new Vector { data = GetEmbeddings(sentences[i]) };
             }
             _embeddings = vectors;
 
