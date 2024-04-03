@@ -101,9 +101,12 @@ namespace SubtitleGenerator
 
             var srtFilePath = Utils.SaveSrtContentToTempFile(srtBatches, Path.GetFileNameWithoutExtension(VideoFilePath));
 
-           // srtBatches = new() { "So for this project, we used Whisper which is a transformer based model available on how you face that's that performs transcription and translation really well for a lot of different languages."};
+            // srtBatches = new() { "So for this project, we used Whisper which is a transformer based model available on how you face that's that performs transcription and translation really well for a lot of different languages."};
 
-            var rankings = SemanticSearch.GetRankings("failure", srtBatches.ToArray());
+            //srtBatches = srtBatches.Select(s => new string(s.Where(c => char.IsLetter(c) || char.IsWhiteSpace(c)).ToArray())).ToList();
+            srtBatches = srtBatches.SelectMany(s => s.Split("\n")).Where(s => !string.IsNullOrEmpty(s)).Where(s => s.Length > 2).ToList();
+
+            var rankings = SemanticSearch.GetRankings("games", srtBatches.ToArray());
 
             var mostRelevantSentence = srtBatches[rankings[0]];
             //OpenVideo(addSubtitles(VideoFilePath, srtFilePath));
