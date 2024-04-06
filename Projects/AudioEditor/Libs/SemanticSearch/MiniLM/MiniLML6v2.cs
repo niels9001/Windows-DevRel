@@ -1,10 +1,11 @@
 ﻿using Microsoft.ML.Data;
 using Microsoft.ML;
-using TorchSharp.Tensor;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Collections.Generic;
 using System.Linq;
 using Windows.UI;
+using System.IO;
+using TorchSharp.Tensor;
 
 namespace Libs.SemanticSearch.MiniLM
 {
@@ -31,7 +32,7 @@ namespace Libs.SemanticSearch.MiniLM
 
         public float[] GenerateEmbeddings(IEnumerable<string> input, bool meanPooling = true, bool normalize = true)
         {
-            var modelPath = "Resources/Model/all-MiniLM-L6-v2.onnx";
+            var modelPath = "Resources/Models/all-MiniLM-L6-v2.onnx";
             var mlContext = new MLContext();
 
             var inputTexts = input.ToList();

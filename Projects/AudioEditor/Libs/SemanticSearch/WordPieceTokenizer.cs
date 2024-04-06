@@ -1,4 +1,9 @@
-﻿namespace Libs.SemanticSearch
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using Extensions;
+
+namespace Libs.SemanticSearch
 {
     /// <summary>
     /// Word piece tokenizer based on bert-base-uncased model in transformers.
@@ -21,7 +26,7 @@
         public List<(string Token, int VocabularyIndex)> Tokenize(IEnumerable<string> texts)
         {
             // [CLS] Words of sentence [SEP] Words of next sentence [SEP]
-            IEnumerable<string> tokens = new[]
+             IEnumerable<string> tokens = new[]
                 {
                     DefaultTokens.Classification
                 };
