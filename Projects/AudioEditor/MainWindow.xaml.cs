@@ -14,6 +14,12 @@ using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
+using Libs.VoiceActivity;
+using SubtitleGenerator;
+using System.Diagnostics;
+using System.Threading.Tasks;
+using Libs.VoiceRecognition;
+using static Libs.VoiceRecognition.Whisper;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -36,6 +42,45 @@ namespace AudioEditor
             myButton.Content = "Clicked";
         }
 
+        private async Task testChunkingAndWhisperAsync()
+        {
+            var audioBytes = Utils.LoadAudioBytes(VideoFilePath);
+            var srtBatches = new List<string>();
+
+            var dynamicChunks = Chunking.SmartChunking(audioBytes);
+
+            //// Transform the operations into a collection of tasks.
+            //var transcriptionTasks = dynamicChunks.Select(async (chunk, i) =>
+            //{
+            //    var audioSegment = Utils.ExtractAudioSegment(VideoFilePath, chunk.start, chunk.end - chunk.start);
+            //    return await TranscribeAsync(audioSegment, Combo2.SelectedValue.ToString(), Switch1.IsOn ? TaskType.Translate : TaskType.Transcribe, (int)chunk.start);
+            //}).ToList();
+
+            //// Wait for all tasks to complete while preserving the order.
+            //var transcriptions = await Task.WhenAll(transcriptionTasks);
+
+            //// At this point, 'transcriptions' contains the results in the order of 'dynamicChunks'.
+            //// Add the transcription results to your srtBatches list.
+            //var srtBatches = transcriptions.ToList();
+
+            foreach (var chunk in dynamicChunks.Select((value, i) => (value, i)))
+            {
+                // Assuming you have or can create a method for extracting audio segments by start/end times.
+                // This will involve modifying your Utils.ExtractAudioFromVideo method or creating a new one that can handle this.
+                // The new method might return a byte array of the audio for the specified chunk.
+                // The method might look like: Utils.ExtractAudioSegment(audioBytes, chunk.start, chunk.end);
+                var audioSegment = Utils.ExtractAudioSegment(VideoFilePath, chunk.value.start, chunk.value.end - chunk.value.start);
+
+                // Assuming TranscribeAsync can take the audio segment directly along with other parameters.
+                // The provided chunk might also be used to adjust how you number/name the subtitle batches.
+                // Adjusting the call to TranscribeAsync to use the chunk's start time or a combination of start and end times for naming uniqueness.
+                var transcription = await Whisper.TranscribeAsync(audioSegment, Combo2.SelectedValue.ToString(), TaskType.Transcribe, (int)chunk.value.start);
+
+                srtBatches.Add(transcription);
+            }
+
+            var srtFilePath = Utils.SaveSrtContentToTempFile(srtBatches, Path.GetFileNameWithoutExtension(VideoFilePath));
+        }
         private void testSemanticSearch ()
         {
             var miniLM = new MiniLML6v2(new MiniLML6v2Config());
