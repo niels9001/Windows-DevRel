@@ -15,6 +15,9 @@
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Resources\Models\all-MiniLM-L6-v2.onnx" />
+    <None Remove="Resources\Models\silero_vad.onnx" />
+    <None Remove="Resources\Models\whisper_small_int8.onnx" />
+    <None Remove="Resources\test.mp3" />
     <None Remove="Resources\vocab.txt" />
   </ItemGroup>
 
@@ -26,12 +29,22 @@
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <Content Include="Resources\Models\silero_vad.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Resources\Models\whisper_small_int8.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Resources\test.mp3">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="libtorch-cpu" Version="1.8.0.7" />
     <PackageReference Include="Microsoft.ML" Version="3.0.1" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.16.3" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions" Version="0.10.0" />
     <PackageReference Include="Microsoft.ML.OnnxTransformer" Version="3.0.1" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.5.240311000" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.3233" />

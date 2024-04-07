@@ -159,7 +159,7 @@ namespace Libs.VoiceRecognition
         {
             var assemblyLocation = Assembly.GetExecutingAssembly().Location;
             var assemblyPath = Path.GetDirectoryName(assemblyLocation);
-            string whisperModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "\\Resources\\Models\\model_small.onnx"));
+            string whisperModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "Resources\\Models\\whisper_small.onnx"));
 
             var audioTensor = new DenseTensor<float>(pcmAudioData, [1, pcmAudioData.Length]);
             var timestampsEnableTensor = new DenseTensor<int>(new[] { 1 }, [1]);

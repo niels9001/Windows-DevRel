@@ -43,7 +43,7 @@ namespace Libs.VoiceActivity
         {
             var assemblyLocation = Assembly.GetExecutingAssembly().Location;
             var assemblyPath = Path.GetDirectoryName(assemblyLocation);
-            string vadModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "\\Resources\\Models\\silero_vad.onnx"));
+            string vadModelPath = Path.GetFullPath(Path.Combine(assemblyPath, "Resources\\Models\\silero_vad.onnx"));
 
             var MODEL_PATH = vadModelPath;
 
